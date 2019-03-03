@@ -1,0 +1,13 @@
+*.swp
+*.pyc
+*.bak
+*.egg-info
+*.dist
+*.dist.py
+.env
+_pycache__
+build
+dist
+auth
+test
+

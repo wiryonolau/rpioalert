@@ -1,0 +1,14 @@
+[Unit]
+Description=RPIO Alert using temper
+After=multi-user.target
+
+[Service]
+User=pi
+Type=simple
+ExecStart=/usr/local/bin/rpioalert --off hum:lt:65 --on htm:gte:70 --pin 27 --pin 10
+ExecStop=/usr/local/bin/rpioalert --pin 27 --pin 10 -stop
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
