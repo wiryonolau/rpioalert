@@ -26,7 +26,9 @@ optional arguments:
 ```
 
 --pin can be specified multiple time, useful for giving signal when condition reach and show current state e.g using RGB LED
+
 --on or --off condition can be specified multiple time, logic AND will be use between condition
+
 If multiple temper device installed, average value from thos device will be use for comparison
 
 ### Systemd
