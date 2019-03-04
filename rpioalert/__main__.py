@@ -105,7 +105,7 @@ def toggle_led(leds, condition, avg_temp, avg_humid, turn_on):
     current_state = ["LED:{} {}".format(l.pin.number, "ON" if l.is_lit else "OFF") for l in leds]
     logger.debug("Current state {}".format(", ".join(current_state)))
 
-async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, lock=None, executor=None, loop=None):
+async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[], on_condition=[], lock=None, executor=None, loop=None):
     executor = executor or ThreadPoolExecutor(max_workers=1)
     loop = loop or asyncio.get_event_loop()
     logger = logging.getLogger("rpioalert.rpc_server")
@@ -122,7 +122,7 @@ async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, lock=None, execu
             if request["method"] == "get_status":
                 async with lock:
                     led_state = [{"pin" : l.pin.number, "state": l.is_lit} for l in leds]
-                    current_state = {"status" : stats.dict(), "led": led_state}
+                    current_state = {"status" : stats.dict(), "condition": {"off": off_condition, "on": on_condition }, "led": led_state}
                     response = json.dumps(current_state)
             
             logger.debug("Response : {}".format(response))
@@ -159,13 +159,13 @@ async def rpio_alert(leds, stats, off_condition=[], on_condition=[], lock=None, 
             temps = []
             humis = []
 
-            for status in temper_status:
-                if "internal_temperature" in status:
-                    temps.append(status["internal_temperature"] or 0)
+            for s in temper_status:
+                if "internal_temperature" in s:
+                    temps.append(s["internal_temperature"] or 0)
 
 
-                if "internal_humidity" in status:
-                    humis.append(status["internal_humidity"] or 0)
+                if "internal_humidity" in s:
+                    humis.append(s["internal_humidity"] or 0)
 
             if len(temps) == 0 or len(humis) == 0:
                 raise Exception("No record from temper device")
@@ -254,6 +254,8 @@ def main():
                 "leds" : leds,
                 "listen" : args.rpc_listen,
                 "port" : args.rpc_port, 
+                "off_condition" : args.off,
+                "on_condition" : args.on,
                 "stats" : stats,
                 "lock" : lock,
                 "executor" : executor,
