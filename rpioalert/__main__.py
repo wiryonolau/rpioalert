@@ -9,6 +9,30 @@ from gpiozero import LED
 from concurrent.futures import ThreadPoolExecutor
 from .temper import Temper
 
+class Status:
+    def __init__(self, temperature=0, humidity=0):
+        self._temperature = temperature
+        self._humidity = humidity
+
+    @property
+    def temperature(self):
+        return self._temperature
+
+    @property
+    def humidity(self):
+        return self._humidity
+
+    @temperature.setter
+    def temperature(self, temp):
+        self._temperature = temp
+    
+    @humidity.setter
+    def humidity(self, hum):
+        self._humidity = hum
+
+    def dict(self):
+        return {"temperature" : self._temperature, "humidity" : self._humidity}
+
 def get_status(temper):
     logger = logging.getLogger("rpioalert.get_status")
     status = []
@@ -81,8 +105,43 @@ def toggle_led(leds, condition, avg_temp, avg_humid, turn_on):
     current_state = ["LED:{} {}".format(l.pin.number, "ON" if l.is_lit else "OFF") for l in leds]
     logger.debug("Current state {}".format(", ".join(current_state)))
 
+async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, lock=None, executor=None, loop=None):
+    executor = executor or ThreadPoolExecutor(max_workers=1)
+    loop = loop or asyncio.get_event_loop()
+    logger = logging.getLogger("rpioalert.rpc_server")
 
-async def rpio_alert(leds, off_condition=[], on_condition=[], executor=None, both=False, loop=None):
+    async def rpc_handler(reader, writer):
+        request = await reader.read(1024)
+        request = json.loads(request.decode())
+
+        logger.debug("Request : {}".format(request))
+  
+        response = None
+
+        try:
+            if request["method"] == "get_status":
+                async with lock:
+                    led_state = [{"pin" : l.pin.number, "state": l.is_lit} for l in leds]
+                    current_state = {"status" : stats.dict(), "led": led_state}
+                    response = json.dumps(current_state)
+            
+            logger.debug("Response : {}".format(response))
+
+            writer.write(response.encode())
+            await writer.drain()
+            writer.close()
+        except:
+            logger.debug(sys.exc_info())
+            writer.close()
+   
+    try: 
+        logger.info("Start rpc server, listening on {}:{}".format(listen, port))
+        server = asyncio.start_server(rpc_handler, listen, port)
+        await server
+    except:
+        logger.info(sys.exc_info())
+       
+async def rpio_alert(leds, stats, off_condition=[], on_condition=[], lock=None, executor=None, both=False, loop=None):
     executor = executor or ThreadPoolExecutor(max_workers=1)
     loop = loop or asyncio.get_event_loop()
     logger = logging.getLogger("rpioalert.rpio_alert")
@@ -92,30 +151,34 @@ async def rpio_alert(leds, off_condition=[], on_condition=[], executor=None, bot
 
     while not stop:
         try:
-            status = await loop.run_in_executor(executor, get_status, temper)
+            temper_status = await loop.run_in_executor(executor, get_status, temper)
 
-            if len(status) == 0:
+            if len(temper_status) == 0:
                 raise Exception("Empty status")
 
             temps = []
             humis = []
 
-            for stat in status:
-                if "internal_temperature" in stat:
-                    temps.append(stat["internal_temperature"] or 0)
+            for status in temper_status:
+                if "internal_temperature" in status:
+                    temps.append(status["internal_temperature"] or 0)
 
 
-                if "internal_humidity" in stat:
-                    humis.append(stat["internal_humidity"] or 0)
+                if "internal_humidity" in status:
+                    humis.append(status["internal_humidity"] or 0)
 
             if len(temps) == 0 or len(humis) == 0:
-                raise Exception("No record from sensorpicker")
+                raise Exception("No record from temper device")
    
             avg_temp = sum(map(float, temps)) / len(temps)
             avg_humid = sum(map(float, humis)) / len(humis)
 
-            toggle_led(leds, off_condition, avg_temp, avg_humid, turn_on=False)
-            toggle_led(leds, on_condition, avg_temp, avg_humid, turn_on=True)
+            async with lock:
+                stats.temperature = avg_temp
+                stats.humidity = avg_humid
+
+                toggle_led(leds, off_condition, avg_temp, avg_humid, turn_on=False)
+                toggle_led(leds, on_condition, avg_temp, avg_humid, turn_on=True)
         except asyncio.CancelledError:
             stop = True
         except KeyboardInterrupt:
@@ -132,8 +195,11 @@ async def shutdown(task):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pin", help="GPIO Pin", type=int, action='append')
-    parser.add_argument("--off", help="Pin Off condition, format: <temp|hum>:<eq|lt|lte|gt|gte>:<value>", action="append")
-    parser.add_argument("--on", help="Pin On condition, format: <temp|hum>:<eq|lt|lte|gt|gte>:<value>", action="append")
+    parser.add_argument("--off", help="Pin Off condition, format: <temp|hum>:<eq|lt|lte|gt|gte>:<value>", action="append", default=[])
+    parser.add_argument("--on", help="Pin On condition, format: <temp|hum>:<eq|lt|lte|gt|gte>:<value>", action="append", default=[])
+    parser.add_argument("-rpc", help="Start rpc server", action="store_true", default=False)
+    parser.add_argument("--rpc_listen", help="Listen address, default all 0.0.0.0", type=str, default="0.0.0.0")
+    parser.add_argument("--rpc_port", help="Listen port, default 15555", type=int, default=15555)
     parser.add_argument("-stop", help="Cleanup on stop service", action="store_true", default=False)
     parser.add_argument("-v", "--verbose", help="Log verbosity", action="store_true", default=False)
 
@@ -144,7 +210,6 @@ def main():
         format="%(asctime)s %(levelname)-8s %(name)-30s %(message)s"
     )
     logger = logging.getLogger("rpioalert.main")
-
 
     if args.pin is None:
         logger.info("Please state GPIO pin")
@@ -168,17 +233,33 @@ def main():
     loop = asyncio.get_event_loop()
     executor = ThreadPoolExecutor(max_workers=1)
 
-    kwargs = {
-        "executor" : executor,
-        "leds" : leds, 
-        "off_condition" : args.off,
-        "on_condition" : args.on,
-        "loop" : loop
-    }
-    
+    stats = Status()
+    lock = asyncio.Lock()
+
     tasks = [
-        asyncio.ensure_future(rpio_alert(**kwargs))
+        asyncio.ensure_future(rpio_alert(**{
+            "leds" : leds, 
+            "off_condition" : args.off,
+            "on_condition" : args.on,
+            "stats" : stats,
+            "lock" : lock,
+            "executor" : executor,
+            "loop" : loop
+        }))
     ]
+
+    if args.rpc:
+        tasks.append(
+            asyncio.ensure_future(rpc_server(**{
+                "leds" : leds,
+                "listen" : args.rpc_listen,
+                "port" : args.rpc_port, 
+                "stats" : stats,
+                "lock" : lock,
+                "executor" : executor,
+                "loop" : loop
+            }))
+        )
 
     try:
         logger.info("Start rpioalert")

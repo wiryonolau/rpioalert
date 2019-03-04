@@ -15,14 +15,15 @@ pip3 setup.py install
 usage: rpioalert [-h] [--pin PIN] [--off OFF] [--on ON] [-stop] [-v]
 
 optional arguments:
-  -h, --help     show this help message and exit
-  --pin PIN      GPIO Pin
-  --off OFF      Pin Off condition, format:
-                 <temp|hum>:<eq|lt|lte|gt|gte>:<value>
-  --on ON        Pin On condition, format:
-                 <temp|hum>:<eq|lt|lte|gt|gte>:<value>
-  -stop          Cleanup on stop service
-  -v, --verbose  Log verbosity
+  -h, --help                show this help message and exit
+  -rpc                      Start rpc server
+  -stop                     Cleanup on stop service
+  --pin PIN                 GPIO Pin
+  --off OFF                 Pin Off condition, format: <temp|hum>:<eq|lt|lte|gt|gte>:<value>
+  --on ON                   Pin On condition, format: <temp|hum>:<eq|lt|lte|gt|gte>:<value>
+  --rpc_listen RPC_LISTEN   Listen address, default all 0.0.0.0
+  --rpc_port RPC_PORT       Listen port, default 15555
+  -v, --verbose             Log verbosity
 ```
 
 --pin can be specified multiple time, useful for giving signal when condition reach and show current state e.g using RGB LED
