@@ -1,0 +1,5 @@
+asyncio==3.4.3
+colorzero==1.1
+gpiozero==1.5.0
+pyserial==3.4
+smbus2==0.2.3

@@ -25,7 +25,7 @@ class Status:
     @temperature.setter
     def temperature(self, temp):
         self._temperature = temp
-    
+
     @humidity.setter
     def humidity(self, hum):
         self._humidity = hum
@@ -62,11 +62,11 @@ def get_status(temper):
 def compare(condition, temperature, humidity):
     try:
         value_type, comparison, cvalue = condition.split(":")
-   
+
         if value_type == ["t", "temp", "temperature"]:
             value = temperature
         elif value_type in ["h", "hum", "humidity"]:
-            value = humidity 
+            value = humidity
 
         if comparison == "eq":
             return float(value) == float(cvalue)
@@ -79,7 +79,7 @@ def compare(condition, temperature, humidity):
         elif comparison == "lte":
             return float(value) <= float(cvalue)
         else:
-            return False 
+            return False
     except:
         return False
 
@@ -91,16 +91,16 @@ def toggle_led(leds, condition, avg_temp, avg_humid, turn_on):
 
     if reach is False:
         return False
-    
+
     logger.debug("{}, T:{}, H:{}, Reach:{}".format(",".join(condition), avg_temp, avg_humid, reach))
-   
+
     for led in leds:
         if turn_on is True and led.is_lit is False:
             logger.debug("{}, T:{}, H:{}, LED:{}, OFF->ON".format(",".join(condition), avg_temp, avg_humid, led.pin.number))
             led.on()
         elif turn_on is False and led.is_lit is True:
             logger.debug("{}, T:{}, H:{}, LED:{}, ON->OFF".format(",".join(condition), avg_temp, avg_humid, led.pin.number))
-            led.off()
+            led.off() 
 
     current_state = ["LED:{} {}".format(l.pin.number, "ON" if l.is_lit else "OFF") for l in leds]
     logger.debug("Current state {}".format(", ".join(current_state)))
@@ -115,7 +115,7 @@ async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[]
         request = json.loads(request.decode())
 
         logger.debug("Request : {}".format(request))
-  
+
         response = None
 
         try:
@@ -124,7 +124,7 @@ async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[]
                     led_state = [{"pin" : l.pin.number, "state": l.is_lit} for l in leds]
                     current_state = {"status" : stats.dict(), "condition": {"off": off_condition, "on": on_condition }, "led": led_state}
                     response = json.dumps(current_state)
-            
+
             logger.debug("Response : {}".format(response))
 
             writer.write(response.encode())
@@ -133,14 +133,14 @@ async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[]
         except:
             logger.debug(sys.exc_info())
             writer.close()
-   
-    try: 
+
+    try:
         logger.info("Start rpc server, listening on {}:{}".format(listen, port))
         server = asyncio.start_server(rpc_handler, listen, port)
         await server
     except:
         logger.info(sys.exc_info())
-       
+
 async def rpio_alert(leds, stats, off_condition=[], on_condition=[], lock=None, executor=None, both=False, loop=None):
     executor = executor or ThreadPoolExecutor(max_workers=1)
     loop = loop or asyncio.get_event_loop()
@@ -169,7 +169,7 @@ async def rpio_alert(leds, stats, off_condition=[], on_condition=[], lock=None, 
 
             if len(temps) == 0 or len(humis) == 0:
                 raise Exception("No record from temper device")
-   
+
             avg_temp = sum(map(float, temps)) / len(temps)
             avg_humid = sum(map(float, humis)) / len(humis)
 
@@ -211,9 +211,10 @@ def main():
     )
     logger = logging.getLogger("rpioalert.main")
 
-    if args.pin is None:
-        logger.info("Please state GPIO pin")
-        sys.exit()
+    # Allow empy pin, only status
+    # if args.pin is None:
+    #     logger.info("Please state GPIO pin")
+    #     sys.exit()
 
     if args.stop is True:
         logger.info("Reset LED")
@@ -222,7 +223,7 @@ def main():
             led.off()
             led.close()
         sys.exit()
-        
+
     try:
         leds = [LED(pin) for pin in args.pin]
     except:
@@ -238,7 +239,7 @@ def main():
 
     tasks = [
         asyncio.ensure_future(rpio_alert(**{
-            "leds" : leds, 
+            "leds" : leds,
             "off_condition" : args.off,
             "on_condition" : args.on,
             "stats" : stats,
@@ -253,7 +254,7 @@ def main():
             asyncio.ensure_future(rpc_server(**{
                 "leds" : leds,
                 "listen" : args.rpc_listen,
-                "port" : args.rpc_port, 
+                "port" : args.rpc_port,
                 "off_condition" : args.off,
                 "on_condition" : args.on,
                 "stats" : stats,
@@ -272,7 +273,7 @@ def main():
         pass
     except:
         logger.debug(sys.exc_info())
-    
+
     logger.info("Stop rpioalert")
     loop.run_until_complete(asyncio.wait([shutdown(t) for t in tasks]))
     executor.shutdown(wait=True)
