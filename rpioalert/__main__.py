@@ -181,7 +181,7 @@ def toggle_led(leds, condition, avg_temp, avg_humid, turn_on):
     return True
 
 
-async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[], on_condition=[], lock=None, executor=None, loop=None):
+async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[], on_condition=[], off_first=False, lock=None, executor=None, loop=None):
     executor = executor or ThreadPoolExecutor(max_workers=1)
     loop = loop or asyncio.get_event_loop()
     logger = logging.getLogger("rpioalert.rpc_server")
@@ -200,7 +200,7 @@ async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[]
                     led_state = [{"pin": l.pin.number, "state": l.is_lit}
                                  for l in leds]
                     current_state = {"status": stats.dict(), "condition": {
-                        "off": off_condition, "on": on_condition}, "led": led_state}
+                        "off": off_condition, "on": on_condition, "off_first": off_first}, "led": led_state}
                     response = json.dumps(current_state)
 
             logger.debug("Response : {}".format(response))
@@ -256,14 +256,16 @@ async def rpio_alert(leds, stats, off_condition=[], on_condition=[], off_first=F
                 stats.humidity = avg_humid
 
                 if off_first:
+                    condition = [off_condition, on_condition]
                     turn_on = [False, True]
                 else:
+                    condition = [on_condition, off_condition]
                     turn_on = [True, False]
 
-                reach = toggle_led(leds, off_condition, avg_temp,
+                reach = toggle_led(leds, condition[0], avg_temp,
                                    avg_humid, turn_on=turn_on[0])
                 if not reach:
-                    toggle_led(leds, on_condition, avg_temp,
+                    toggle_led(leds, condition[1], avg_temp,
                                avg_humid, turn_on=turn_on[1])
         except asyncio.CancelledError:
             stop = True
@@ -350,6 +352,7 @@ def main():
                 "port": args.rpc_port,
                 "off_condition": args.off,
                 "on_condition": args.on,
+                "off_first": args.off_first,
                 "stats": stats,
                 "lock": lock,
                 "executor": executor,
