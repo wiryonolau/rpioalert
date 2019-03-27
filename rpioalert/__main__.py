@@ -5,6 +5,7 @@ import json
 import logging
 import signal
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from gpiozero import LED
@@ -199,8 +200,16 @@ async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[]
                 async with lock:
                     led_state = [{"pin": l.pin.number, "state": l.is_lit}
                                  for l in leds]
-                    current_state = {"status": stats.dict(), "condition": {
-                        "off": off_condition, "on": on_condition, "off_first": off_first}, "led": led_state}
+                    current_state = {
+                        "status": stats.dict(),
+                        "condition": {
+                            "off": off_condition,
+                            "on": on_condition,
+                            "off_first": off_first
+                        },
+                        "led": led_state,
+                        "time" : str(int(time.time()))
+                    }
                     response = json.dumps(current_state)
 
             logger.debug("Response : {}".format(response))
