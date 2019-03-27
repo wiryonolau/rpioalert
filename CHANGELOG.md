@@ -1,3 +1,6 @@
+## 0.2.3 (March 27, 2019)
+  - add time to get_status rpc request
+
 ## 0.2.2 (March 27, 2019)
   - update README
 
