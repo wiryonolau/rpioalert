@@ -12,11 +12,39 @@ from gpiozero import LED
 
 from .temper import Temper
 
-
 class Status:
-    def __init__(self, temperature=0, humidity=0):
+    def __init__(self, temperature=0, humidity=0, lcd=None):
         self._temperature = temperature
         self._humidity = humidity
+        self._lcd = None
+        self._logger = logging.getLogger("rpioalert.get_status")
+
+        self._init_lcd(lcd)
+
+    def _init_lcd(self):
+        try:
+            if args.lcd is None:
+                raise Exception("No LCD define")
+
+            import busio
+            import board
+
+            i2c = busio.I2C(board.SCL, board.SDA)
+            lcd_columns = 16
+            lcd_rows = 2
+
+            if args.lcd == "sainsmart_charlcd_led":
+                from .adafruit_character_lcd.character_lcd_rgb_i2c_sainsmart import Character_LCD_RGB_I2C_Sainsmart
+                self._lcd = Character_LCD_RGB_I2C_Sainsmart(i2c, lcd_columns, lcd_rows)
+            elif args.lcd == "adafruit_charlcd_mono":
+                import adafruit_character_lcd.character_lcd_i2c as character_lcd
+                self._lcd = character_lcd.Character_LCD_I2C(i2c, lcd_columns, lcd_rows)
+            elif args.lcd == "adafruit_charlcd_rgb":
+                import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd
+                self._lcd = character_lcd.Character_LCD_RGB_I2C(
+                    i2c, lcd_columns, lcd_rows)
+        except:
+            self._lcd = None
 
     @property
     def temperature(self):
@@ -33,6 +61,14 @@ class Status:
     @humidity.setter
     def humidity(self, hum):
         self._humidity = hum
+
+    def update_lcd(self):
+        if self._lcd is not None:
+            try:
+                self._lcd.message = "T: {}C, H: {}%\n{}".format(self._temperature, self._humidity, time.strftime("%H:%M:%S"))
+            except:
+                self._logger.debug("Unable to set LCD message")
+                self._logger.debug(sys.exc_info())
 
     def dict(self):
         return {"temperature": self._temperature, "humidity": self._humidity}
@@ -208,7 +244,7 @@ async def rpc_server(leds, stats, listen="0.0.0.0", port=15555, off_condition=[]
                             "off_first": off_first
                         },
                         "led": led_state,
-                        "time" : str(int(time.time()))
+                        "time": str(int(time.time()))
                     }
                     response = json.dumps(current_state)
 
@@ -263,6 +299,7 @@ async def rpio_alert(leds, stats, off_condition=[], on_condition=[], off_first=F
             async with lock:
                 stats.temperature = avg_temp
                 stats.humidity = avg_humid
+                stats.update_lcd()
 
                 if off_first:
                     condition = [off_condition, on_condition]
@@ -301,6 +338,8 @@ def main():
                         action="store_true", default=False)
     parser.add_argument(
         "-off_first", help="Check OFF condition first, then ON condition", action="store_true", default=False)
+    parser.add_argument("--lcd", help="Use I2C LCD 16x2 to show status", choices=[
+                        "sainsmart_charlcd_led", "adafruit_charlcd_rgb", "adafruit_charlcd_mono"], default=None)
     parser.add_argument("--pin", help="GPIO Pin", type=int,
                         action='append', default=[])
     parser.add_argument(
@@ -337,7 +376,7 @@ def main():
     loop = asyncio.get_event_loop()
     executor = ThreadPoolExecutor(max_workers=1)
 
-    stats = Status()
+    stats = Status(lcd=args.lcd)
     lock = asyncio.Lock()
 
     tasks = [
