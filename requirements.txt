@@ -1,5 +1,14 @@
+Adafruit-Blinka==1.2.8
+adafruit-circuitpython-74hc595==1.0.2
+adafruit-circuitpython-busdevice==2.2.9
+adafruit-circuitpython-charlcd==3.1.2
+adafruit-circuitpython-mcp230xx==1.2.0
+Adafruit-PlatformDetect==1.0.0
+Adafruit-PureIO==0.2.3
 asyncio==3.4.3
 colorzero==1.1
 gpiozero==1.5.0
 pyserial==3.4
 smbus2==0.2.3
+spidev==3.4
+sysv-ipc==1.0.0
