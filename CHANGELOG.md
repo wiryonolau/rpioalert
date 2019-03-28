@@ -1,3 +1,7 @@
+## 0.2.4 (March 28, 2019)
+  - Update requirements.txt
+  - Add CharLCD Output
+
 ## 0.2.3 (March 27, 2019)
   - add time to get_status rpc request
 
