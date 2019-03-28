@@ -1,3 +1,6 @@
+## 0.3.0 (March 28, 2019)
+  - Fix LCD set message
+
 ## 0.2.4 (March 28, 2019)
   - Update requirements.txt
   - Add CharLCD Output
