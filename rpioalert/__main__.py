@@ -6,44 +6,80 @@ import logging
 import signal
 import sys
 import time
+import busio
+import board
 from concurrent.futures import ThreadPoolExecutor
 from gpiozero import LED
+
+import adafruit_character_lcd.character_lcd_i2c as character_lcd_i2c
+import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd_rgb_i2c
+from adafruit_character_lcd.character_lcd import _set_bit as set_bit
+
 from .temper import Temper
+
+class Lcd:
+    def __init__(self, lcd_type=None, lcd_columns=16, lcd_rows=2):
+        self._lcd_type = lcd_type
+        self._lcd = None
+        self._logger = logging.getLogger(self.__class__.__name__)
+
+        self._init_lcd(lcd_columns, lcd_rows)
+
+    def _init_lcd(self, lcd_columns, lcd_rows):
+        try:
+            if self._lcd_type is None:
+                raise Exception("No LCD define")
+
+            i2c = busio.I2C(board.SCL, board.SDA)
+
+            if self._lcd_type == "sainsmart_charlcd_led":
+                self._lcd = character_lcd_rgb_i2c.Character_LCD_RGB_I2C(
+                    i2c, lcd_columns, lcd_rows)
+
+                self._lcd._mcp.iodira = set_bit(self._lcd._mcp.iodira, 5, 0)
+
+                # Turn on backlight
+                self._lcd._mcp.gpioa = set_bit(self._lcd._mcp.gpioa, 5, 0)
+
+            elif self._lcd_type == "adafruit_charlcd_mono":
+                self._lcd = character_lcd_i2c.Character_LCD_I2C(i2c, lcd_columns, lcd_rows)
+            elif self._lcd_type == "adafruit_charlcd_rgb":
+                self._lcd = character_lcd_rgb_i2c.Character_LCD_RGB_I2C(
+                    i2c, lcd_columns, lcd_rows)
+        except:
+            self._logger.debug(sys.exc_info())
+
+    def update_led(self, red=0, green=0, blue=0):
+        if self._lcd is not None:
+            if self._lcd_type in ["adafruit_charlcd_rgb", "sainsmart_charlcd_led"]:
+                self._lcd.color = [red, green, blue]
+
+    def update_lcd(self, message):
+        if self._lcd is not None:
+            try:
+                self._lcd.message = message
+            except:
+                self._logger.debug("Unable to set LCD message")
+                self._logger.debug(sys.exc_info())
+
+    def clear_lcd(self):
+        if self._lcd is not None:
+            try:
+                self._lcd.clear()
+                if self._lcd_type == "sainsmart_charlcd_led":
+                    # Turn off backlight
+                    self._lcd._mcp.gpioa = set_bit(self._lcd._mcp.gpioa, 5, 1)
+            except:
+                self._logger.debug("Unable to clear LCD")
+                self._logger.debug(sys.exc_info())
 
 class Status:
     def __init__(self, temperature=0, humidity=0, lcd=None):
         self._temperature = temperature
         self._humidity = humidity
-        self._lcd = None
-        self._logger = logging.getLogger("rpioalert.get_status")
+        self.lcd = lcd
 
-        self._init_lcd(lcd)
-
-    def _init_lcd(self, lcd):
-        try:
-            if lcd is None:
-                raise Exception("No LCD define")
-
-            import busio
-            import board
-
-            i2c = busio.I2C(board.SCL, board.SDA)
-            lcd_columns = 16
-            lcd_rows = 2
-
-            if lcd == "sainsmart_charlcd_led":
-                from .adafruit_character_lcd.character_lcd_rgb_i2c_sainsmart import Character_LCD_RGB_I2C_Sainsmart
-                self._lcd = Character_LCD_RGB_I2C_Sainsmart(i2c, lcd_columns, lcd_rows)
-            elif lcd == "adafruit_charlcd_mono":
-                import adafruit_character_lcd.character_lcd_i2c as character_lcd
-                self._lcd = character_lcd.Character_LCD_I2C(i2c, lcd_columns, lcd_rows)
-            elif lcd == "adafruit_charlcd_rgb":
-                import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd
-                self._lcd = character_lcd.Character_LCD_RGB_I2C(
-                    i2c, lcd_columns, lcd_rows)
-        except:
-            self._logger.debug(sys.exc_info())
-            self._lcd = None
+        self._logger = logging.getLogger(self.__class__.__name__)
 
     @property
     def temperature(self):
@@ -61,34 +97,12 @@ class Status:
     def humidity(self, hum):
         self._humidity = hum
 
-    def update_led(self, red=0, green=0, blue=0):
-        if self._lcd is not None:
-            lcd_class = self._lcd.__class__.__name__
-            if lcd_class in ["Character_LCD_RGB_I2C", "Character_LCD_RGB_I2C_Sainsmart"]:
-                self._lcd.color = [red, green, blue]
-
     def update_lcd(self):
-        if self._lcd is not None:
-            try:
-                self._lcd.message = "T: {:.2f}C  {}\nH: {:.2f}%".format(self._temperature, time.strftime("%H:%M"), self._humidity)
-            except:
-                self._logger.debug("Unable to set LCD message")
-                self._logger.debug(sys.exc_info())
-
-    def clear_lcd(self):
-        if self._lcd is not None:
-            try:
-                self._lcd.clear()
-                lcd_class = self._lcd.__class__.__name__
-                if lcd_class == "Character_LCD_RGB_I2C_Sainsmart":
-                    self._lcd.backlight_off()
-            except:
-                self._logger.debug("Unable to clear LCD")
-                self._logger.debug(sys.exc_info())
+        message = "T: {:.2f}C  {}\nH: {:.2f}%".format(self._temperature, time.strftime("%H:%M"), self._humidity)
+        self.lcd.update_lcd(message)
 
     def dict(self):
         return {"temperature": self._temperature, "humidity": self._humidity}
-
 
 def get_status(temper):
     logger = logging.getLogger("rpioalert.get_status")
@@ -177,6 +191,9 @@ def format_condition(condition, as_str=False):
             condition_str.append(logic)
         condition_str.append("{}:{}:{}".format(
             value_type, comparison, value_to_compare))
+
+    if not len(condition_str):
+        return "None"
 
     return " ".join(condition_str)
 
@@ -392,7 +409,9 @@ def main():
     loop = asyncio.get_event_loop()
     executor = ThreadPoolExecutor(max_workers=1)
 
-    stats = Status(lcd=args.lcd)
+    lcd = Lcd(lcd_type=args.lcd)
+    stats = Status(lcd=lcd)
+
     lock = asyncio.Lock()
 
     tasks = [
@@ -439,7 +458,7 @@ def main():
     executor.shutdown(wait=True)
     loop.close()
 
-    stats.clear_lcd()
+    lcd.clear_lcd()
 
     for led in leds:
         if not led.closed:
