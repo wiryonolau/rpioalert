@@ -1,3 +1,7 @@
+## 0.4.0 (March 30, 2019)
+  - Remove sainsmart class
+  - Remove adafruit sainsmart, not required. Lcd class added
+
 ## 0.3.0 (March 28, 2019)
   - Fix LCD set message
 
