@@ -6,16 +6,22 @@ import logging
 import signal
 import sys
 import time
-import busio
-import board
 from concurrent.futures import ThreadPoolExecutor
-from gpiozero import LED
 
 import adafruit_character_lcd.character_lcd_i2c as character_lcd_i2c
 import adafruit_character_lcd.character_lcd_rgb_i2c as character_lcd_rgb_i2c
+
+try:
+    import board
+except:
+    pass
+
+import busio
 from adafruit_character_lcd.character_lcd import _set_bit as set_bit
+from gpiozero import LED
 
 from .temper import Temper
+
 
 class Lcd:
     def __init__(self, lcd_type=None, lcd_columns=16, lcd_rows=2):
@@ -42,7 +48,8 @@ class Lcd:
                 self._lcd._mcp.gpioa = set_bit(self._lcd._mcp.gpioa, 5, 0)
 
             elif self._lcd_type == "adafruit_charlcd_mono":
-                self._lcd = character_lcd_i2c.Character_LCD_I2C(i2c, lcd_columns, lcd_rows)
+                self._lcd = character_lcd_i2c.Character_LCD_I2C(
+                    i2c, lcd_columns, lcd_rows)
             elif self._lcd_type == "adafruit_charlcd_rgb":
                 self._lcd = character_lcd_rgb_i2c.Character_LCD_RGB_I2C(
                     i2c, lcd_columns, lcd_rows)
@@ -73,6 +80,7 @@ class Lcd:
                 self._logger.debug("Unable to clear LCD")
                 self._logger.debug(sys.exc_info())
 
+
 class Status:
     def __init__(self, temperature=0, humidity=0, lcd=None):
         self._temperature = temperature
@@ -98,11 +106,13 @@ class Status:
         self._humidity = hum
 
     def update_lcd(self):
-        message = "T: {:.2f}C  {}\nH: {:.2f}%".format(self._temperature, time.strftime("%H:%M"), self._humidity)
+        message = "T: {:.2f}C  {}\nH: {:.2f}%".format(
+            self._temperature, time.strftime("%H:%M"), self._humidity)
         self.lcd.update_lcd(message)
 
     def dict(self):
         return {"temperature": self._temperature, "humidity": self._humidity}
+
 
 def get_status(temper):
     logger = logging.getLogger("rpioalert.get_status")
